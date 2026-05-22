@@ -78,6 +78,9 @@ RUN pnpm i
 
 COPY . /app
 
+# Fix CRLF line endings that Windows checkouts may introduce in bin/ scripts
+RUN find bin/ -type f | xargs sed -i 's/\r//' 2>/dev/null || true
+
 # creating a log directory so that image wont fail when RAILS_LOG_TO_STDOUT is false
 # https://github.com/evolution/evolution/issues/701
 RUN mkdir -p /app/log

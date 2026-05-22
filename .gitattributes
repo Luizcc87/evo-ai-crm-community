@@ -1,5 +1,7 @@
-# Shell scripts must always use LF line endings (Docker entrypoints break with CRLF)
+# Force LF line endings (prevent CRLF corruption on Windows builds)
+* text=auto eol=lf
 docker/entrypoints/**     text eol=lf
 docker/entrypoints/*.sh   text eol=lf
 *.sh                      text eol=lf
 *.rb                      text eol=lf
+bin/*                     text eol=lf
