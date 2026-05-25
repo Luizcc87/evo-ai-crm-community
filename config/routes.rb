@@ -457,6 +457,7 @@ Rails.application.routes.draw do
         post 'profile/:id/status', to: 'evolution_go/profile#update_status', as: :profile_update_status
         post 'profile/:id/picture', to: 'evolution_go/profile#update_picture_by_instance', as: :profile_update_picture_by_instance
         delete 'profile/:id/picture', to: 'evolution_go/profile#remove_picture', as: :profile_remove_picture
+        resource :proxy, only: [:show, :update, :destroy], controller: 'evolution_go/proxy'
       end
 
       scope path: 'zapi', as: 'zapi' do
