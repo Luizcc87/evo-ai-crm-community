@@ -42,6 +42,7 @@ class Api::V1::EvolutionGo::ProxyController < Api::V1::BaseController
 
     begin
       result = set_proxy(@api_url, @admin_token, @instance_uuid, proxy_params.to_h)
+      persist_proxy_settings(proxy_params)
       render json: { success: true, data: result }
     rescue Net::OpenTimeout, Net::ReadTimeout
       render json: { success: false, error: 'Evolution Go indisponível', detail: 'Timeout ao conectar' }, status: :service_unavailable
@@ -80,6 +81,7 @@ class Api::V1::EvolutionGo::ProxyController < Api::V1::BaseController
                                         .first
 
     if whatsapp_channel
+      @whatsapp_channel = whatsapp_channel
       creds = evolution_go_credentials_for(whatsapp_channel)
       @inbox = whatsapp_channel.inbox
       @api_url = creds[:api_url]
@@ -109,11 +111,13 @@ class Api::V1::EvolutionGo::ProxyController < Api::V1::BaseController
     raise "Evolution Go respondeu #{response.code}" unless response.is_a?(Net::HTTPSuccess)
 
     body = JSON.parse(response.body)
-    # Retorna apenas os campos seguros — nunca expõe username/password
+    # Retorna apenas os campos seguros — nunca expõe password
     raw = body['data'] || body
     {
       instanceId: raw['instanceId'],
       proxyAddress: raw['proxyAddress'],
+      proxyUsername: raw['proxyUsername'].presence || stored_proxy_username,
+      hasAuth: raw['hasAuth'],
       status: raw['status'] || 'inactive',
       lastCheck: raw['lastCheck'],
       latencyMs: raw['latencyMs'],
@@ -153,6 +157,29 @@ class Api::V1::EvolutionGo::ProxyController < Api::V1::BaseController
     raw.except('username', 'password')
   rescue JSON::ParserError
     raise 'Resposta inválida do Evolution Go'
+  end
+
+  def persist_proxy_settings(proxy_params)
+    return unless @whatsapp_channel
+
+    provider_config = (@whatsapp_channel.provider_config || {}).deep_dup
+    current_proxy_settings = provider_config['proxy_settings'] || provider_config[:proxy_settings] || {}
+    provider_config['proxy_settings'] = current_proxy_settings.merge(
+      'enabled' => true,
+      'protocol' => proxy_params[:protocol].presence || current_proxy_settings['protocol'],
+      'host' => proxy_params[:host],
+      'port' => proxy_params[:port].to_s,
+      'username' => proxy_params[:username].presence
+    ).compact
+
+    @whatsapp_channel.update!(provider_config: provider_config)
+  end
+
+  def stored_proxy_username
+    return nil unless @whatsapp_channel
+
+    proxy_settings = (@whatsapp_channel.provider_config || {})['proxy_settings'] || {}
+    proxy_settings['username'].presence
   end
 
   def delete_proxy(api_url, admin_token, instance_uuid)
