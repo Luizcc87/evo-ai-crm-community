@@ -53,6 +53,13 @@ class Api::V1::EvolutionGo::AuthorizationsController < Api::V1::BaseController
       # Create new instance
       instance_data = create_instance_go(@api_url, @admin_token, @instance_name, auth_params)
 
+      begin
+        apply_proxy_settings_go(@api_url, @admin_token, instance_data['instance_uuid'], auth_params[:proxy_settings])
+      rescue StandardError
+        delete_instance_go(@api_url, @admin_token, instance_data['instance_uuid'])
+        raise
+      end
+
       register_webhook_after_create(@api_url, instance_data['instance_token'])
 
       render json: {
@@ -344,6 +351,38 @@ class Api::V1::EvolutionGo::AuthorizationsController < Api::V1::BaseController
   rescue StandardError => e
     Rails.logger.error "Evolution Go API: Create instance connection error: #{e.class} - #{e.message}"
     raise "Failed to create instance: #{e.message}"
+  end
+
+  def apply_proxy_settings_go(api_url, admin_token, instance_uuid, proxy_settings)
+    return unless proxy_settings.present? && ActiveModel::Type::Boolean.new.cast(proxy_settings[:enabled] || proxy_settings['enabled'])
+
+    host = proxy_settings[:host].presence || proxy_settings['host'].presence
+    port = proxy_settings[:port].presence || proxy_settings['port'].presence
+    return if host.blank? || port.blank?
+
+    proxy_url = "#{api_url.chomp('/')}/instance/proxy/#{instance_uuid}"
+    uri = URI.parse(proxy_url)
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = (uri.scheme == 'https')
+    http.open_timeout = 10
+    http.read_timeout = 15
+
+    request = Net::HTTP::Post.new(uri)
+    request['apikey'] = admin_token
+    request['Content-Type'] = 'application/json'
+    request.body = {
+      protocol: proxy_settings[:protocol].presence || proxy_settings['protocol'].presence,
+      host: host,
+      port: port.to_s,
+      username: proxy_settings[:username].presence || proxy_settings['username'].presence,
+      password: proxy_settings[:password].presence || proxy_settings['password'].presence
+    }.compact.to_json
+
+    Rails.logger.info "Evolution Go API: Applying proxy settings for #{instance_uuid}"
+    response = http.request(request)
+    Rails.logger.info "Evolution Go API: Apply proxy response code: #{response.code}"
+
+    raise "Failed to apply proxy settings. Status: #{response.code}, Body: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
   end
 
   def check_server_status_go(api_url)
