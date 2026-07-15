@@ -53,6 +53,8 @@
 #  index_users_on_uid_and_provider        (uid,provider) UNIQUE
 #
 class User < ApplicationRecord
+  self.inheritance_column = :_type_disabled
+
   # Evolution Reference Model - managed by evo-auth-service
   # This model serves only as a reference to sync data from evo-auth-service
   
